@@ -1,3 +1,6 @@
+# Summary
+This is a program designed to make trading crypto assets easy using the Kraken API.
+
 # Virtual Environment
 __Name:__ kraken
 
