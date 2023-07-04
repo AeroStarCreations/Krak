@@ -7,6 +7,7 @@ import os
 import time
 from urllib.parse import urlencode
 from dotenv import load_dotenv
+from enum import Enum
 
 load_dotenv()
 
@@ -65,8 +66,18 @@ def get_ticker_info(pair=None):
     params = { 'pair': pair } if pair else None
     return _get_market_api_response('Ticker', params)
 
+AssetPairInfo = Enum('AssetPairInfo', ['INFO', 'LEVERAGE', 'FEES', 'MARGIN'])
 
-resp = get_asset_info(['btc', 'eth'])
+def get_asset_pair_info(pairs=['BTC/USD'], info: AssetPairInfo=AssetPairInfo.INFO):
+    params = {
+        'pair': ','.join(pairs),
+        'info': info.name.lower()
+    }
+    return _get_market_api_response('AssetPairs', params)
+
+
+resp = get_account_balance()
+resp = get_asset_pair_info(['eth/usd'])
 
 print(resp)
 print('------------')
