@@ -77,3 +77,7 @@ pip freeze --local > requirements.txt
   1. `git clone https://github.com/AeroStarCreations/Krak.git`
 4. Install project dependencies
   1. `pip install -r requirements.txt`
+
+# Docstrings
+
+~~This project uses the autoDocstring VSCode extension. To configure, add "custom_autoDocstring_template.mustache" to the "Custom Template Path" setting.~~
