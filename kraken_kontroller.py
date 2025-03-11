@@ -1,4 +1,6 @@
+from collections import deque
 from dataclasses import dataclass
+import time
 from portfolio_manager import Asset, Portfolio
 from constants import ACCOUNT_DETAILS, ACCOUNT_ID, KRAKEN_FIAT
 from httpx_responses.ticker_info_response import TickerInfo
@@ -66,7 +68,8 @@ async def _assign_tradable_asset_pairs():
         _tradable_asset_pairs_lock.release()
 
 
-async def _submit_validated_trade(ticker: str, volume: float):
+async def _submit_validated_trade(ticker: str, volume: float, task_status=trio.TASK_STATUS_IGNORED):
+    task_status.started()
     response = await _ut.add_order(OrderType.MARKET, OrderDirection.BUY, str(volume), ticker, validate=_is_test)
     if response.isError:
         print_error(f'Could not order {ticker}.', response.error)
@@ -128,7 +131,27 @@ async def _get_purchase_details(portfolio: Portfolio) -> dict[str, PurchaseDetai
         pds[ticker] = PurchaseDetails(a, ticker, _tradable_asset_pairs[ticker], float(_ticker_info[ticker].bid[0]))
     return pds
 
+class QQQ:
+    _lock = trio.Lock()
+    _q = deque()
+
+    def add(self, ticker: str, volume: float):
+        self._q.append({'ticker': ticker, 'volume': volume})
+
+    async def pop(self):
+        async with self._lock:
+            return self._q.popleft()
+        
+    def __len__(self):
+        return len(self._q)
+        
+async def _get_trade_from_queue_and_submit(queue: QQQ):
+    deets = await queue.pop()
+    println('**: ' + deets['ticker'])
+    await _submit_validated_trade(deets['ticker'], deets['volume'])
+
 async def _validate_and_submit_trades(purchase_details: list[PurchaseDetails]):
+    # queue = QQQ()
     async with trio.open_nursery() as nursery:
         for pd in purchase_details:
             volume = pd.usd_value / pd.price
@@ -140,6 +163,14 @@ async def _validate_and_submit_trades(purchase_details: list[PurchaseDetails]):
                 print_warning(f'Could not buy {pd.symbol} because quantity {volume:,.4f} is less than required {pd.asset_pair.order_min:,f}')
             else:
                 nursery.start_soon(_submit_validated_trade, pd.ticker, volume)
+                # await nursery.start(_submit_validated_trade, pd.ticker, volume)
+                # await _submit_validated_trade(pd.ticker, volume)
+                # queue.add(pd.ticker, volume)
+    
+    # queueSize = len(queue)
+    # async with trio.open_nursery() as nursery:
+    #     for _ in range(queueSize):
+    #         nursery.start_soon(_get_trade_from_queue_and_submit, queue)
 
 ###########################################################
 def get_portfolio() -> Portfolio:
@@ -156,5 +187,8 @@ def get_portfolio() -> Portfolio:
         return _portfolio
     
 def add_orders(portfolio: Portfolio):
+    start_time = time.time()
     purchase_details: dict[str, PurchaseDetails] = trio.run(_get_purchase_details, portfolio)
     trio.run(_validate_and_submit_trades, purchase_details.values())
+    elapsed_time = time.time() - start_time
+    println(f'Runtime: {elapsed_time}')

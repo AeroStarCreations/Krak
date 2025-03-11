@@ -2,6 +2,7 @@ import base64
 import hashlib
 import hmac
 import time
+import trio
 from urllib.parse import urlencode
 
 import httpx
@@ -10,6 +11,8 @@ from constants import API_PRIVATE_PATH, PRIVATE_API_KEY, PRIVATE_API_URL, PUBLIC
 
 
 class PrivateAPI:
+    _nonce_lock = trio.Lock()
+
     def _get_kraken_signature(self, urlpath, data):
         post_data = urlencode(data)
         nonce = data['nonce']
@@ -25,15 +28,16 @@ class PrivateAPI:
         return str(time.time_ns())
     
     async def _get_private_api_response(self, endpoint, data={}) -> httpx.Response:
-        data.update({
-            'nonce': self._get_nonce()
-        })
-        headers = {
-            'API-Key': PUBLIC_API_KEY,
-            'API-Sign': self._get_kraken_signature(f'{API_PRIVATE_PATH}{endpoint}', data)
-        }
         resp = None
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(f'{PRIVATE_API_URL}{endpoint}', headers=headers, data=data)
+        async with self._nonce_lock:
+            data.update({
+                'nonce': self._get_nonce()
+            })
+            headers = {
+                'API-Key': PUBLIC_API_KEY,
+                'API-Sign': self._get_kraken_signature(f'{API_PRIVATE_PATH}{endpoint}', data)
+            }
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(f'{PRIVATE_API_URL}{endpoint}', headers=headers, data=data)
         return resp
     
